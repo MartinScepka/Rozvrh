@@ -28,10 +28,10 @@ public class TimetableFrame extends JFrame {
     }
 
     private void initGui() {
-        // --- Horní panel pro výběr budovy a místnosti ---
+        // Horní panel pro výběr budovy a místnosti
         JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
 
-        cboBudova = new JComboBox<>(new String[]{"A", "J", "S"});
+        cboBudova = new JComboBox<>(new String[]{"A", "B", "C", "H", "J", "S",});
         cboMistnost = new JComboBox<>();
         btnNacist = new JButton("Načíst rozvrh");
 
@@ -47,7 +47,7 @@ public class TimetableFrame extends JFrame {
         // Při kliknutí načíst rozvrh
         btnNacist.addActionListener(e -> nacistRozvrh());
 
-        // --- Tabulka ---
+        // Tabulka
         timetable = new LocationTimetable(); // prázdný timetable na začátek
         tabTimetable = new JTable(new TimetableModel());
         tabTimetable.setAutoCreateRowSorter(true);
@@ -77,7 +77,6 @@ public class TimetableFrame extends JFrame {
                 var reader = new java.io.InputStreamReader(conn);
                 var json = new com.google.gson.JsonParser().parse(reader).getAsJsonObject();
 
-                // Správný klíč je "mistnostInfo", ne "mistnostInfoList"
                 var pole = json.getAsJsonArray("mistnostInfo");
 
                 java.util.List<String> mistnosti = new java.util.ArrayList<>();
