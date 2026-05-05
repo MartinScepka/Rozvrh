@@ -1,14 +1,18 @@
 package cz.uhk.timetable.gui;
 
+import com.google.gson.JsonParser;
 import cz.uhk.timetable.model.LocationTimetable;
 import cz.uhk.timetable.utils.TimetableProvider;
-import cz.uhk.timetable.utils.impl.MockTimetableProvider;
 import cz.uhk.timetable.utils.impl.StagTimetableProvider;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import java.awt.*;
-import java.awt.event.*;
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public class TimetableFrame extends JFrame {
     private LocationTimetable timetable;
@@ -19,19 +23,16 @@ public class TimetableFrame extends JFrame {
     private JComboBox<String> cboMistnost;
     private JButton btnNacist;
 
-    public TimetableFrame(){
+    public TimetableFrame() {
         super("FIM Rozvrhy");
-
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-
         initGui();
     }
 
     private void initGui() {
-        // Horní panel pro výběr budovy a místnosti
         JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
 
-        cboBudova = new JComboBox<>(new String[]{"A", "B", "C", "H", "J", "S",});
+        cboBudova = new JComboBox<>(new String[]{"A", "B", "C", "H", "J", "S"});
         cboMistnost = new JComboBox<>();
         btnNacist = new JButton("Načíst rozvrh");
 
@@ -41,21 +42,16 @@ public class TimetableFrame extends JFrame {
         topPanel.add(cboMistnost);
         topPanel.add(btnNacist);
 
-        // Při změně budovy načíst místnosti z API
         cboBudova.addActionListener(e -> nacistMistnosti());
-
-        // Při kliknutí načíst rozvrh
         btnNacist.addActionListener(e -> nacistRozvrh());
 
-        // Tabulka
-        timetable = new LocationTimetable(); // prázdný timetable na začátek
+        timetable = new LocationTimetable();
         tabTimetable = new JTable(new TimetableModel());
         tabTimetable.setAutoCreateRowSorter(true);
 
         add(topPanel, BorderLayout.NORTH);
         add(new JScrollPane(tabTimetable), BorderLayout.CENTER);
 
-        // Načíst místnosti pro výchozí budovu
         nacistMistnosti();
 
         pack();
@@ -66,42 +62,30 @@ public class TimetableFrame extends JFrame {
         String budova = (String) cboBudova.getSelectedItem();
         cboMistnost.removeAllItems();
 
-        SwingWorker<java.util.List<String>, Void> worker = new SwingWorker<>() {
-            @Override
-            protected java.util.List<String> doInBackground() throws Exception {
-                var url = "https://stag-demo.uhk.cz/ws/services/rest2/mistnost/getMistnostiInfo" +
-                        "?zkrBudovy=%s&pracoviste=%%25&typ=U&outputFormat=JSON&cisloMistnosti=%%25"
-                                .formatted(budova);
+        var url = "https://stag-demo.uhk.cz/ws/services/rest2/mistnost/getMistnostiInfo" +
+                "?zkrBudovy=%s&pracoviste=%%25&typ=U&outputFormat=JSON&cisloMistnosti=%%25"
+                        .formatted(budova);
 
-                var conn = new java.net.URL(url).openStream();
-                var reader = new java.io.InputStreamReader(conn);
-                var json = new com.google.gson.JsonParser().parse(reader).getAsJsonObject();
+        try {
+            var reader = new InputStreamReader(new URL(url).openStream());
+            var json = JsonParser.parseReader(reader).getAsJsonObject();
+            var pole = json.getAsJsonArray("mistnostInfo");
 
-                var pole = json.getAsJsonArray("mistnostInfo");
+            List<String> mistnosti = new ArrayList<>();
+            for (var item : pole) {
+                String cislo = item.getAsJsonObject().get("cisloMistnosti").getAsString();
+                mistnosti.add(cislo);
+            }
+            Collections.sort(mistnosti);
 
-                java.util.List<String> mistnosti = new java.util.ArrayList<>();
-                for (var item : pole) {
-                    String cislo = item.getAsJsonObject().get("cisloMistnosti").getAsString();
-                    mistnosti.add(cislo);
-                }
-                java.util.Collections.sort(mistnosti);
-                return mistnosti;
+            for (String m : mistnosti) {
+                cboMistnost.addItem(m);
             }
 
-            @Override
-            protected void done() {
-                try {
-                    for (String m : get()) {
-                        cboMistnost.addItem(m);
-                    }
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(TimetableFrame.this,
-                            "Chyba při načítání místností: " + ex.getMessage(),
-                            "Chyba", JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        };
-        worker.execute();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            throw new RuntimeException(ex);
+        }
     }
 
     private void nacistRozvrh() {
@@ -110,38 +94,15 @@ public class TimetableFrame extends JFrame {
 
         if (mistnost == null) return;
 
-        btnNacist.setEnabled(false);
-        btnNacist.setText("Načítám...");
-
-        SwingWorker<LocationTimetable, Void> worker = new SwingWorker<>() {
-            @Override
-            protected LocationTimetable doInBackground() {
-                return provider.read(budova, mistnost);
-            }
-
-            @Override
-            protected void done() {
-                try {
-                    timetable = get();
-                    ((AbstractTableModel) tabTimetable.getModel()).fireTableDataChanged();
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(TimetableFrame.this,
-                            "Chyba při načítání rozvrhu: " + ex.getMessage(),
-                            "Chyba", JOptionPane.ERROR_MESSAGE);
-                } finally {
-                    btnNacist.setEnabled(true);
-                    btnNacist.setText("Načíst rozvrh");
-                }
-            }
-        };
-        worker.execute();
+        timetable = provider.read(budova, mistnost);
+        ((AbstractTableModel) tabTimetable.getModel()).fireTableDataChanged();
     }
 
-    class TimetableModel extends AbstractTableModel{
+    class TimetableModel extends AbstractTableModel {
 
         @Override
         public String getColumnName(int column) {
-            switch (column){
+            switch (column) {
                 case 0: return "Zkratka";
                 case 1: return "Celý Název";
                 case 2: return "Den";
@@ -149,7 +110,7 @@ public class TimetableFrame extends JFrame {
                 case 4: return "Konec";
                 case 5: return "Vyučující";
             }
-            return  "";
+            return "";
         }
 
         @Override
@@ -165,7 +126,7 @@ public class TimetableFrame extends JFrame {
         @Override
         public Object getValueAt(int rowIndex, int columnIndex) {
             var act = timetable.getActivities().get(rowIndex);
-            switch (columnIndex){
+            switch (columnIndex) {
                 case 0: return act.getCode();
                 case 1: return act.getName();
                 case 2: return act.getDay();
